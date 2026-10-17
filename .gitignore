@@ -42,3 +42,6 @@ yarn-debug.log*
 yarn-error.log*
 .vercel
 *.tsbuildinfo
+
+# 助手的工作笔记：含本机路径/内网信息，不进入公开仓库
+/.workbuddy/
