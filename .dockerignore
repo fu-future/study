@@ -1,0 +1,33 @@
+# 依赖与构建产物（镜像里会重新装/重新构建）
+node_modules
+.next
+.next*
+.next-e2e*
+
+# 本地数据：**绝不**打进镜像 —— 里面是真实的用户学习数据
+.data
+
+# 环境变量：**绝不**打进镜像 —— 里面有密钥
+.env
+.env.local
+.env.*.local
+
+# 版本库与编辑器
+.git
+.gitignore
+.github
+.vscode
+.idea
+
+# 测试与文档（运行时不需要）
+e2e
+playwright-report
+test-results
+coverage
+*.md
+
+# 其他
+npm-debug.log*
+Dockerfile
+docker-compose.yml
+.dockerignore

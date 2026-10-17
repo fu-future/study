@@ -1,0 +1,720 @@
+// =============================================================================
+// AI 高中学习教练 — Prisma Schema
+//
+// 【第一阶段数据源：SQLite】
+//   DATABASE_URL="file:../.data/dev.db"   （相对本文件所在目录解析 → <项目根>/.data/dev.db）
+//   理由与约束见 docs/DATABASE.md。目标：只装 Node.js + npm 就能跑起来，
+//   不把 Docker / PostgreSQL 当作第一阶段的前提。
+//
+// 【通用数据模型约定】——为了让同一个 schema 在 SQLite 与 PostgreSQL 上都成立：
+//   1. 不使用原生 enum（SQLite 不支持）→ 统一用 String 存枚举值，
+//      取值域由 src/lib/domain/enums.ts 的 Zod schema 在写入前强制校验。
+//      这样类型安全在**应用层**得到保证，而不是依赖数据库方言。
+//   2. 不使用 Json 类型（SQLite 上语义不一致）→ 结构化的小数据统一存 TEXT，
+//      由 src/lib/db/json.ts 做安全的序列化 / 反序列化（带 Zod 校验）。
+//   3. 不使用 String[] / Int[] 等数组字段 → 用关联表或 JSON TEXT 表达。
+//   4. 不使用 @db.* 原生类型修饰符 → 避免方言差异。
+//   5. Decimal 不用于金额统计 → 学习统计一律用 Int / Float，避免运行时差异。
+//
+// 【未来迁移到 PostgreSQL】不是改一行 DATABASE_URL 就能完成的，见 docs/DATABASE.md。
+//   本文件保持 Postgres 兼容，`npm run pg:schema` 可据此生成 PostgreSQL 变体与参考迁移 SQL。
+//
+// 所有表均带 createdAt / updatedAt；删除策略默认「软删除 + 归档字段」，不做级联物理删除。
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// 1. 用户与学习档案
+// -----------------------------------------------------------------------------
+
+model User {
+  id           String  @id @default(cuid())
+  email        String  @unique
+  displayName  String
+  passwordHash String // scrypt(pass, salt)，格式见 src/lib/auth/password.ts；永不记录明文
+  role         String  @default("student") // student | admin
+  // 软删除：置为 true 后所有查询层都会过滤掉，避免误删学习记录
+  isArchived   Boolean @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  lastSeenAt DateTime?
+
+  profile           StudentProfile?
+  questions         Question[]
+  wrongAnswerRecords WrongAnswerRecord[]
+  answerAttempts    AnswerAttempt[]
+  masteries         UserKnowledgeMastery[]
+  studyPlans        StudyPlan[]
+  studyTasks        StudyTask[]
+  studySessions     StudySession[]
+  reviewSchedules   ReviewSchedule[]
+  conversations     Conversation[]
+  modelCallLogs     ModelCallLog[]
+
+  @@index([isArchived])
+}
+
+model StudentProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  grade            String  @default("高一") // 高一 | 高二 | 高三
+  curriculumId     String?
+  curriculum       Curriculum? @relation(fields: [curriculumId], references: [id])
+  textbookVersion  String? // 教材版本，如「人教A版」「沪科版」；可空表示未确定
+  // 选科（"3+1+2" 等）。以 JSON TEXT 存字符串数组，读写走 src/lib/db/json.ts
+  electiveSubjects String  @default("[]")
+  // 学习目标，如「期末数学提到 120」「物理跟上进度」
+  studyGoal        String?
+  examDate         DateTime? // 近期重要考试日期，用于计划优先级
+  dailyAvailableMinutes Int @default(90) // 每天可用学习时间（分钟），计划生成的核心约束
+  weekdayAvailableMinutes Int? // 可选的平时/周末区分
+  weekendAvailableMinutes Int?
+
+  // 温和提醒偏好：默认关闭，产品不做焦虑式提醒
+  reminderEnabled Boolean @default(false)
+  reminderTime    String? // "HH:mm"
+  preferences     String  @default("{}") // 其他偏好，JSON TEXT
+
+  onboardingCompleted Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([curriculumId])
+}
+
+// -----------------------------------------------------------------------------
+// 2. 课程体系（学科 / 教材版本）
+// -----------------------------------------------------------------------------
+
+model Subject {
+  id   String @id @default(cuid())
+  code String @unique // chinese | math | english | physics | chemistry | biology | history | geography | politics
+  name String // 语文 / 数学 / ...
+  // 是否为高考选科科目，用于计划生成时的权重
+  isElective Boolean @default(false)
+  sortOrder  Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  curriculums      Curriculum[]
+  knowledgePoints  KnowledgePoint[]
+  questions        Question[]
+  learningResources LearningResource[]
+  studyTasks       StudyTask[]
+  conversations    Conversation[]
+}
+
+/// 教材版本 / 地区课程体系。同一学科可能存在多个版本。
+model Curriculum {
+  id   String @id @default(cuid())
+  name String // 如「人教版（2019）高中数学 必修第一册」
+  // 区域或出版社标识
+  region       String?
+  publisher    String?
+  subjectId    String
+  subject      Subject @relation(fields: [subjectId], references: [id])
+  grade        String?
+  description  String?
+  isApproved   Boolean @default(false) // 是否经过人工审核（AI 生成的知识点不得直接置为 true）
+  sourceNote   String? // 数据来源说明，保证可追溯
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  knowledgePoints KnowledgePoint[]
+  studentProfiles StudentProfile[]
+
+  @@unique([subjectId, name, grade])
+  @@index([subjectId])
+}
+
+// -----------------------------------------------------------------------------
+// 3. 知识点体系（树形 + 有向关联）
+// -----------------------------------------------------------------------------
+
+model KnowledgePoint {
+  id   String @id @default(cuid())
+  name String
+  // 规范化后的稳定编码，便于 CSV 导入时做幂等 upsert，如 "MATH-1-2-3"
+  code String @unique
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id])
+  grade     String
+  curriculumId String?
+  curriculum   Curriculum? @relation(fields: [curriculumId], references: [id])
+
+  // 树形结构：章节路径 + 自关联父节点
+  chapter      String // 一级章节，如「函数与导数」
+  chapterPath  String // 完整路径 "函数与导数/导数/导数运算"
+  parentId     String?
+  parent       KnowledgePoint?  @relation("KnowledgePointTree", fields: [parentId], references: [id])
+  children     KnowledgePoint[] @relation("KnowledgePointTree")
+  depth        Int @default(0)
+
+  description       String? // 知识点说明
+  difficulty        Int     @default(3) // 1..5
+  // 常见错误 / 典型题型，JSON TEXT（字符串数组）
+  commonMistakes    String  @default("[]")
+  typicalQuestionTypes String @default("[]")
+
+  // 审核状态：draft | reviewed | deprecated
+  // AI 临时生成的知识点只能是 draft，不会被当成官方课程目录
+  reviewStatus String @default("draft")
+  source       String @default("manual") // manual | csv-import | ai-draft | demo-seed
+  sourceNote   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  outgoingRelations KnowledgePointRelation[] @relation("KPRelationFrom")
+  incomingRelations KnowledgePointRelation[] @relation("KPRelationTo")
+  questionLinks     QuestionKnowledgePoint[]
+  resourceLinks     ResourceKnowledgePoint[]
+  masteries         UserKnowledgeMastery[]
+  studyTasks        StudyTask[]
+  reviewSchedules   ReviewSchedule[]
+
+  @@unique([subjectId, chapterPath, name, grade])
+  @@index([subjectId, grade])
+  @@index([parentId])
+  @@index([reviewStatus])
+}
+
+/// 知识点之间的有向关联
+model KnowledgePointRelation {
+  id     String @id @default(cuid())
+  fromId String
+  from   KnowledgePoint @relation("KPRelationFrom", fields: [fromId], references: [id])
+  toId   String
+  to     KnowledgePoint @relation("KPRelationTo", fields: [toId], references: [id])
+
+  // prerequisite：from 是 to 的前置知识（最常用）
+  // builds_on / related / contains / applies_to
+  relationType String
+  // 关联强度 1..5；前置知识用于「是否需要回补基础」的排序
+  strength     Int    @default(3)
+  note         String?
+  // 关联来源：manual | csv-import | ai-draft —— AI 推测的关联需人工确认
+  source       String @default("manual")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([fromId, toId, relationType])
+  @@index([fromId])
+  @@index([toId])
+}
+
+// -----------------------------------------------------------------------------
+// 4. 题目与错题
+// -----------------------------------------------------------------------------
+
+model Question {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id])
+  grade     String?
+  chapter   String?
+
+  stem         String // 题干纯文本。AI 未返回时可为空字符串，但 UI 会要求人工补全
+  stemFormat   String @default("text") // text | markdown | latex
+  // 选项 JSON TEXT：["A. ...","B. ..."]. 非选择题为 "[]"
+  choices      String @default("[]")
+  correctAnswer String?
+  explanation   String? // 详细解析
+
+  // 题目图片（本地存储的相对路径 + 原始文件名）。不放在 public/ 下，
+  // 只能通过带鉴权的 /api/files/[id] 读取，防止未授权访问任意文件。
+  imagePath    String?
+  imageMimeType String?
+  imageBytes   Int?
+
+  // 来源：manual（手动录入）| image-upload（图片识别）| ai-generated（AI 生成练习）
+  source      String @default("manual")
+  sourceNote  String? // 如「2025 秋季期中卷第 18 题」——不编造来源，用户填什么存什么
+  // AI 识别置信度 0..1；人工录入为 1
+  ocrConfidence Float?
+
+  // 题目状态：active | archived
+  status     String @default("active")
+  isArchived Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  knowledgePointLinks QuestionKnowledgePoint[]
+  wrongAnswerRecords  WrongAnswerRecord[]
+  answerAttempts      AnswerAttempt[]
+
+  @@index([userId, status])
+  @@index([subjectId])
+  @@index([userId, createdAt])
+}
+
+/// 题目 ↔ 知识点 多对多
+model QuestionKnowledgePoint {
+  id               String @id @default(cuid())
+  questionId       String
+  question         Question       @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  knowledgePointId String
+  knowledgePoint   KnowledgePoint @relation(fields: [knowledgePointId], references: [id])
+
+  // 一道题通常有一个主知识点 + 若干次要知识点
+  isPrimary Boolean @default(true)
+  weight    Float   @default(1)
+  // 关联来源与置信度：AI 匹配的关联默认 confidence < 1，且标注 source
+  source     String @default("manual") // manual | ai | csv-import
+  confidence Float  @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([questionId, knowledgePointId])
+  @@index([knowledgePointId])
+}
+
+/// 错题记录：一道题在一个用户下最多一条，多次作答记录在 AnswerAttempt 中保留
+model WrongAnswerRecord {
+  id         String @id @default(cuid())
+  userId     String
+  user       User   @relation(fields: [userId], references: [id])
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id])
+
+  studentAnswer    String? // 学生原始答案
+  correctAnswerSnapshot String? // 保存当时的正确答案，便于后续修订题目时溯源
+
+  // 错误原因分类（JSON TEXT 数组），取值域见 domain/enums.ts ERROR_TYPES
+  errorTypes   String  @default("[]")
+  // AI 推理出的可能原因（自由文本数组），与上面的分类不同，这里有解释性
+  likelyCauses String  @default("[]")
+  explanation  String? // 详细解析（可被 AI 生成，也可人工修改）
+  // AI 判断错误原因的置信度 0..1；学生手动修改后人工改动会记入 editedByUser
+  errorConfidence Float?
+  editedByUser    Boolean @default(false)
+
+  // 错题来源：manual | image-upload | practice
+  source      String @default("manual")
+  sourceNote  String?
+
+  // 处理状态：new | analyzing | needs-review | reviewing | resolved | archived
+  status String @default("new")
+
+  // 复习相关（由 ReviewSchedule 计算后冗余在此，便于列表页快速筛选）
+  attemptCount      Int       @default(0)
+  correctCount      Int       @default(0)
+  lastReviewedAt    DateTime?
+  lastReviewResult  String? // correct | partial | wrong
+  nextReviewAt      DateTime?
+  resolvedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isArchived Boolean @default(false)
+
+  attempts        AnswerAttempt[]
+  reviewSchedules ReviewSchedule[]
+
+  @@unique([userId, questionId])
+  @@index([userId, status])
+  @@index([userId, nextReviewAt])
+  @@index([userId, createdAt])
+}
+
+/// 单次作答记录 —— 同一道题可以有很多条，绝不只保存最后一次
+model AnswerAttempt {
+  id                 String  @id @default(cuid())
+  userId             String
+  user               User    @relation(fields: [userId], references: [id])
+  questionId         String
+  question           Question @relation(fields: [questionId], references: [id])
+  wrongAnswerRecordId String?
+  wrongAnswerRecord  WrongAnswerRecord? @relation(fields: [wrongAnswerRecordId], references: [id])
+
+  answer     String?
+  isCorrect  Boolean
+
+  // 独立完成程度：independent（独立完成）| with-hint（看提示后）| with-solution（看解析后）
+  // 这是掌握度算法的关键输入 —— 看了解析才做对，不能算掌握
+  independence String @default("independent")
+
+  // 本次作答时该题的难度快照 1..5（题目难度可能被后来修改）
+  difficultySnapshot Int @default(3)
+  timeSpentSeconds   Int?
+
+  // 本次作答中暴露的错误类型（JSON TEXT 数组），用于诊断重复错误
+  errorTypes String @default("[]")
+  note       String?
+
+  // 作答场景：initial（首次做错）| practice（练习）| review（错题复习）| retest（视频/讲解后复测）
+  context  String @default("practice")
+  // 关联的学习任务，便于回溯这次作答来自哪个计划任务
+  studyTaskId String?
+  studyTask   StudyTask? @relation(fields: [studyTaskId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, questionId])
+  @@index([userId, createdAt])
+  @@index([questionId])
+  @@index([context])
+}
+
+// -----------------------------------------------------------------------------
+// 5. 知识掌握估计
+// -----------------------------------------------------------------------------
+
+/// 一个用户对一个知识点的掌握估计。唯一约束保证「用户 × 知识点」只有一条。
+model UserKnowledgeMastery {
+  id               String @id @default(cuid())
+  userId           String
+  user             User   @relation(fields: [userId], references: [id])
+  knowledgePointId String
+  knowledgePoint   KnowledgePoint @relation(fields: [knowledgePointId], references: [id])
+
+  // 等级：unevaluated | insufficient | learning | initial | basic | stable
+  // 见 domain/enums.ts MASTERY_LEVELS。刻意不给"分数"做默认展示，
+  // 证据不足时必须显示「还需要更多练习」而不是伪造精确分数。
+  level String @default("unevaluated")
+  // 内部估计值 0..100，可为空；仅在证据充分时才对外展示，且始终与置信度一起展示
+  score  Int?
+  // 置信度 0..1
+  confidence Float @default(0)
+  // 支持的答题证据条数
+  evidenceCount Int @default(0)
+  // 近期表现（滑动窗口正确率 0..1），可为空表示窗口内无数据
+  recentAccuracy Float?
+  recentSampleSize Int @default(0)
+
+  // 重复错误统计（JSON TEXT：{"概念理解错误":2}）
+  repeatedErrorTypes String @default("{}")
+  // 是否需要先回补前置知识
+  needsPrerequisiteReview Boolean @default(false)
+  // 建议的下一步行动（面向学生的自然语言）
+  nextAction String?
+
+  lastEvaluatedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([userId, knowledgePointId])
+  @@index([userId, level])
+  @@index([userId, updatedAt])
+}
+
+// -----------------------------------------------------------------------------
+// 6. 学习资源（第二阶段功能，数据模型先建好）
+// -----------------------------------------------------------------------------
+
+model LearningResource {
+  id           String @id @default(cuid())
+  title        String
+  // 类型：explanation（知识讲解）| example（典型例题）| practice（练习）| video | textbook | article
+  resourceType String
+
+  // 来源必须可追溯，绝不编造
+  provider   String // internal | manual | official-catalog | tavily | custom-json
+  platform   String? // 平台名称，如「国家中小学智慧教育平台」
+  url        String
+  // 资源核验状态：verified（人工核验过）| unverified（搜索得到，未核验）| unavailable（链接失效）
+  verificationStatus String @default("unverified")
+  lastVerifiedAt     DateTime?
+  verifiedBy         String?
+
+  subjectId String?
+  subject   Subject? @relation(fields: [subjectId], references: [id])
+  grade     String?
+  difficulty Int?
+
+  durationSeconds Int? // 视频时长；获取不到就留空，不猜
+  description     String?
+  // 正文/讲解文本（internal 生成的讲解存这里，不需要外链）
+  content         String?
+
+  // active | unavailable | draft
+  status String @default("active")
+  // 由谁创建：system | admin
+  createdBy String @default("system")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  knowledgePointLinks ResourceKnowledgePoint[]
+  studyTasks          StudyTask[]
+
+  @@index([verificationStatus])
+  @@index([resourceType])
+  @@index([subjectId])
+}
+
+model ResourceKnowledgePoint {
+  id                String @id @default(cuid())
+  resourceId        String
+  resource          LearningResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  knowledgePointId  String
+  knowledgePoint    KnowledgePoint  @relation(fields: [knowledgePointId], references: [id])
+
+  relevance  Float  @default(1) // 0..1 相关度
+  matchSource String @default("manual") // manual | ai | keyword
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([resourceId, knowledgePointId])
+  @@index([knowledgePointId])
+}
+
+// -----------------------------------------------------------------------------
+// 7. 学习计划与任务
+// -----------------------------------------------------------------------------
+
+model StudyPlan {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  title String
+  // daily | weekly | exam-prep（考前复习）| weak-point（薄弱专项）| mistake-review（错题复习）| makeup（临时补课）
+  planType String
+  // 阶段目标说明
+  goal       String?
+  startDate  DateTime
+  endDate    DateTime
+  // draft | active | completed | archived
+  status     String @default("active")
+
+  // 生成方式：rule-engine（确定性规则）| ai-assisted（AI 建议后经规则校验）
+  generatedBy String @default("rule-engine")
+  // 生成依据，JSON TEXT，便于解释「为什么给你排了这些任务」
+  rationale   String @default("{}")
+  // 计划内任务的预计总时长，与用户可用时间的一致性校验结果
+  plannedMinutes    Int @default(0)
+  availableMinutes  Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isArchived Boolean @default(false)
+
+  tasks StudyTask[]
+
+  @@index([userId, status])
+  @@index([userId, planType])
+}
+
+model StudyTask {
+  id     String @id @default(cuid())
+  planId String?
+  plan   StudyPlan? @relation(fields: [planId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  title       String
+  subjectId   String?
+  subject     Subject? @relation(fields: [subjectId], references: [id])
+  knowledgePointId String?
+  knowledgePoint   KnowledgePoint? @relation(fields: [knowledgePointId], references: [id])
+  // 关联的学习资源（如某个视频 / 讲解）
+  resourceId  String?
+  resource    LearningResource? @relation(fields: [resourceId], references: [id])
+
+  // 任务类型：explanation（知识讲解）| video | example（例题分析）| practice（独立练习）
+  //          | review（错题复习）| retest（阶段复测）
+  taskType String
+
+  estimatedMinutes Int
+  // 推荐原因 —— 必须能解释「为什么安排这个任务」
+  reason           String
+  // 完成条件，如「独立做对 3 道同类题」
+  completionCriteria String?
+  // 1（低）..5（高）
+  priority Int @default(3)
+
+  // pending | in-progress | completed | skipped | rescheduled
+  status String @default("pending")
+  scheduledDate DateTime
+  dueDate       DateTime?
+
+  completedAt DateTime?
+  actualMinutes Int?
+  // 完成结果，JSON TEXT：{ accuracy, attempts, masteryDelta, note }
+  result      String? @default("{}")
+
+  // 被重新安排时指向原任务，保留调整痕迹
+  rescheduledFromId String?
+  rescheduledFrom   StudyTask? @relation("TaskReschedule", fields: [rescheduledFromId], references: [id])
+  rescheduledTo     StudyTask[] @relation("TaskReschedule")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  answerAttempts AnswerAttempt[]
+
+  @@index([userId, scheduledDate])
+  @@index([userId, status])
+  @@index([planId])
+}
+
+/// 实际学习时段记录（用于真实统计学习时间，与「任务完成率」「正确率」区分开）
+model StudySession {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+  studyTaskId String?
+
+  startedAt  DateTime
+  endedAt    DateTime?
+  durationMinutes Int
+  // 学习方式：task | review | free（自由学习）
+  mode       String @default("task")
+  subjectId  String?
+  note       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, startedAt])
+}
+
+/// 间隔复习调度。历史复习结果累积在 historyJson 中（append-only），不覆盖。
+model ReviewSchedule {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  // 复习对象二选一：错题 或 知识点
+  wrongAnswerRecordId String?
+  wrongAnswerRecord   WrongAnswerRecord? @relation(fields: [wrongAnswerRecordId], references: [id])
+  knowledgePointId    String?
+  knowledgePoint      KnowledgePoint? @relation(fields: [knowledgePointId], references: [id])
+
+  // pending | scheduled | done | skipped
+  status String @default("scheduled")
+
+  dueAt        DateTime
+  intervalDays Int   @default(1)
+  repetition   Int   @default(0) // 连续成功复习次数
+  // 简易 SM-2 变体的难度因子，1.3 起
+  easeFactor   Float @default(2.5)
+  // 上一次复习结果：correct | partial | wrong
+  lastResult   String?
+  lastReviewedAt DateTime?
+  // 历史结果（JSON TEXT 数组，append-only）：[{ at, result, intervalDays, easeFactor }]
+  historyJson  String @default("[]")
+  // 复习策略来源：rule-engine（默认）| manual
+  origin       String @default("rule-engine")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, wrongAnswerRecordId])
+  @@unique([userId, knowledgePointId])
+  @@index([userId, dueAt, status])
+  @@index([userId, status])
+}
+
+// -----------------------------------------------------------------------------
+// 8. 答疑对话
+// -----------------------------------------------------------------------------
+
+model Conversation {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  title     String @default("新的提问")
+  // 答疑模式：guided（引导，默认）| detailed（详细讲解）| exam-review（考试复盘）| quick（快速答疑）
+  mode      String @default("guided")
+  subjectId String?
+  subject   Subject? @relation(fields: [subjectId], references: [id])
+  grade     String?
+  // 关联的错题（从错题本发起追问时）
+  questionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isArchived Boolean @default(false)
+
+  messages Message[]
+
+  @@index([userId, updatedAt])
+}
+
+model Message {
+  id             String @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // user | assistant | system
+  role    String
+  content String
+  // text | markdown | mixed
+  contentType String @default("markdown")
+
+  // 元数据 JSON TEXT：{ model, provider, latencyMs, attachments, tokens }
+  // 不保存任何密钥或完整提示词
+  metadataJson String @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conversationId, createdAt])
+}
+
+// -----------------------------------------------------------------------------
+// 9. 模型调用日志（可观测性 / 成本核算）
+// -----------------------------------------------------------------------------
+
+/// 只记录调用元数据，不保存提示词正文、不保存密钥、不保存学生答案原文。
+model ModelCallLog {
+  id     String  @id @default(cuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  // 调用来源：tutoring | question-analysis | knowledge-diagnosis | study-planning | resource-matching | chat
+  service  String
+  provider String
+  model    String
+  // success | error | timeout | rate-limited | unsupported
+  status   String
+
+  latencyMs      Int
+  promptChars    Int @default(0)
+  completionChars Int @default(0)
+  // 供应商能返回用量时才有值
+  promptTokens     Int?
+  completionTokens Int?
+  // 供应商返回费用时记录；拿不到就留空，不估算假数据
+  estimatedCostUsd Float?
+
+  // 结构化输出校验是否通过
+  schemaValidated Boolean @default(false)
+  // 重试次数
+  retryCount Int @default(0)
+  // 错误码（不包含敏感信息）
+  errorCode  String?
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([service, createdAt])
+  @@index([status])
+}

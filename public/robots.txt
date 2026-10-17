@@ -1,0 +1,4 @@
+# 学习数据不应被搜索引擎收录。
+# 页面元数据里也已设置 robots: { index: false, follow: false }，这里是第二道防线。
+User-agent: *
+Disallow: /

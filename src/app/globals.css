@@ -1,0 +1,167 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * 设计基调：清晰的浅色学习界面。
+ * 刻意避免高饱和色与警示红 —— 面向高中生，不用红色制造「你又错了」的压力感。
+ * 掌握程度用低饱和的蓝→绿梯度表示"往前走"，而不是"合格/不合格"。
+ */
+@layer base {
+  :root {
+    --background: 210 40% 99%;
+    --foreground: 222 24% 18%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 24% 18%;
+
+    --primary: 217 78% 51%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 214 32% 95%;
+    --secondary-foreground: 222 24% 25%;
+
+    --muted: 214 32% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 199 82% 95%;
+    --accent-foreground: 199 70% 28%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 58% 38%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 32 90% 46%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 214 26% 89%;
+    --input: 214 26% 89%;
+    --ring: 217 78% 51%;
+
+    --radius: 0.75rem;
+
+    --font-sans: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', system-ui, -apple-system,
+      'Segoe UI', sans-serif;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    /* 中文正文行高略大，长时间阅读更舒服 */
+    line-height: 1.7;
+  }
+
+  /* 键盘可达性：焦点必须可见（需求：支持键盘操作与基本无障碍） */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* 让 .sr-only 之外的隐藏内容不阻塞屏幕阅读器 */
+  [hidden] {
+    display: none !important;
+  }
+}
+
+@layer components {
+  /* Markdown / AI 输出排版 */
+  .prose-study {
+    @apply text-[15px] leading-7 text-foreground;
+  }
+  .prose-study h1 {
+    @apply mb-3 mt-6 text-xl font-semibold;
+  }
+  .prose-study h2 {
+    @apply mb-2 mt-5 text-lg font-semibold;
+  }
+  .prose-study h3 {
+    @apply mb-2 mt-4 text-base font-semibold;
+  }
+  .prose-study p {
+    @apply my-2;
+  }
+  .prose-study ul {
+    @apply my-2 list-disc space-y-1 pl-6;
+  }
+  .prose-study ol {
+    @apply my-2 list-decimal space-y-1 pl-6;
+  }
+  .prose-study li > p {
+    @apply my-0;
+  }
+  .prose-study code {
+    @apply rounded bg-muted px-1.5 py-0.5 text-[13px] text-foreground;
+  }
+  .prose-study pre {
+    @apply my-3 overflow-x-auto rounded-lg bg-muted p-3 text-[13px];
+  }
+  .prose-study pre code {
+    @apply bg-transparent p-0;
+  }
+  .prose-study blockquote {
+    @apply my-3 border-l-4 border-border bg-muted/60 py-2 pl-3 text-muted-foreground;
+  }
+  .prose-study table {
+    @apply my-3 w-full border-collapse text-sm;
+  }
+  .prose-study th,
+  .prose-study td {
+    @apply border border-border px-3 py-2 text-left;
+  }
+  .prose-study th {
+    @apply bg-muted font-medium;
+  }
+  .prose-study strong {
+    @apply font-semibold text-foreground;
+  }
+  .prose-study a {
+    @apply text-primary underline underline-offset-2;
+  }
+  .prose-study hr {
+    @apply my-4 border-border;
+  }
+
+  /* KaTeX 块级公式在小屏上允许横向滚动，避免溢出撑破布局 */
+  .prose-study .katex-display {
+    @apply my-3 overflow-x-auto overflow-y-hidden py-1;
+  }
+
+  /* 滚动条（桌面端） */
+  .scroll-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-border;
+  }
+}
+
+/* 尊重系统的「减少动效」偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* 打印：把错题 / 计划页直接打印出来贴在桌上 */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    @apply bg-white;
+  }
+}
