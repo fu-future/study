@@ -286,22 +286,29 @@ npx playwright install chromium
 **已实测通过：**
 - 类型检查 0 错误、Lint 0 问题
 - 单元测试 139 个用例全部通过
-- 端到端：见 [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) 的验收报告
+- 端到端：**66 个用例全部通过**（Chromium），见 [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md)
 - 核心链路经真实 HTTP 实测：注册登录 → 建档 → 知识点 → 掌握度诊断（含证据链）
   → 计划生成（含时间精简）→ 周报 → 流式答疑 → 跨用户隔离
+- 生产构建通过（43 个路由），`next start` 实测可运行
+- **真实 DeepSeek 接口已验收**：文本答疑 / 流式 / 多轮上下文 / 结构化错题分析 /
+  **题目图片识别** / 输入限制 / token 用量 —— 16 项全部通过，0 失败
+  （复现：`node scripts/acceptance-ai.mjs` 与 `node scripts/acceptance-ai-vision.mjs`）
 
 **已实现但未在真实环境验证：**
-- **DeepSeek 真实 API 调用**：适配器按官方文档实现，但没有 API Key，
-  因此**没有做过真机验证**。验收清单见 [docs/AI_PROVIDER.md](docs/AI_PROVIDER.md) 第 5 节。
 - **Docker 部署**：配置文件已写好，开发机未安装 Docker，**未实际执行验证**。
 - **PostgreSQL 迁移**：只离线推导出参考 SQL，**未在真实 PostgreSQL 上执行过**。
   并且**迁移不是改一行 `DATABASE_URL` 就能完成的**，请按 docs/DATABASE.md 的清单逐项核对。
+- **上游限流 / 鉴权失败路径**：代码已按状态码映射实现，但未构造真实的上游 429 / 401 场景实测。
 
 **已知限制：**
 - 限流是**进程内**实现，多实例部署需要换成 Redis 等共享存储。
 - 知识点目录是**人工整理的演示数据**（非官方课程标准复刻），正式使用前应由教研人员
   用 CSV/JSON 导入真实目录。
 - 资源检索默认只用库内已核验资源；接入外部搜索 API 后，其结果一律标记为「未核验」。
+- **使用推理模型（如 `deepseek-flash`）时 `AI_MAX_OUTPUT_TOKENS` 需 ≥ 8192**：
+  思考过程与正式回答共用这个额度，设小了会出现"思考用光预算、正文为空"。
+  详见 [docs/AI_PROVIDER.md](docs/AI_PROVIDER.md) 第 5 节。
+- 检索关键词与计划推荐语由规则引擎生成，未做多轮个性化调优。
 
 ---
 

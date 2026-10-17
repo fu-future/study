@@ -33,9 +33,36 @@
 | 7 | 数据库迁移状态 | `npx prisma migrate status` | ✅ **通过** | `Database schema is up to date!` |
 | 8 | Schema 校验 | `npx prisma validate` | ✅ **通过** | `The schema is valid 🚀` |
 | 9 | 开发库未被污染 | 前后比对 `.data/dev.db` 大小/mtime | ✅ **通过** | mtime 始终为 `01:12`，未被任何测试改动 |
-| 10 | 真实 AI 调用 | — | ⚠️ **未执行** | 无 API Key，见第 4 节 |
+| 10 | **真实 AI 调用（DeepSeek）** | `node scripts/acceptance-ai.mjs` | ✅ **通过** | **16 项全部通过 / 0 失败**，详见下方 |
+| 10b | **图片理解（视觉链路）** | `node scripts/acceptance-ai-vision.mjs` | ✅ **通过** | 题目截图 OCR 题干完全正确、解析正确、知识点命中准确 |
 | 11 | Docker 构建/运行 | — | ⚠️ **未执行** | 本机无 Docker，见第 4 节 |
 | 12 | PostgreSQL 迁移 | — | ⚠️ **未执行** | 无实例，见第 4 节 |
+
+### 真实 AI 验收明细（2026-10-17，模型 `deepseek-flash`）
+
+| 验收项 | 结果 | 实测证据 |
+|---|---|---|
+| 普通文本答疑 | ✅ | 一次生成 1100+ 字真实讲解（含 LaTeX），无 Mock 文案 |
+| 流式输出 | ✅ | `text/event-stream; charset=utf-8` + `no-transform`，逐块 delta，`[DONE]` 收尾 |
+| 多轮上下文 | ✅ | 追问 1193 字，与上一轮主题连贯；会话落库 4 条消息 |
+| 结构化错题分析 | ✅ | 一次通过运行时校验，`confidence=0.92`，错误分类在枚举内 |
+| 知识点白名单 | ✅ | 命中 `MATH-G2-DERIV-03`、`MATH-G1-FUNC-02`；**编造并被丢弃 0 个** |
+| 图片理解 | ✅ | Playwright 渲染真实题目截图 → OCR 题干一字不差 → 解析正确（模型自我纠错 `f(-1)=4`） |
+| 输入长度限制 | ✅ | 4100 字输入被本地 400 拦截，**未打到上游** |
+| token 用量 | ✅ | `promptTokens=662 / completionTokens=4634`（上游真实返回） |
+| 红线检查 | ✅ | 未编造教材页码 / 视频链接 / 知识点编号 |
+
+**验收中修复的真实缺陷（3 个，均已在真机复验）：**
+
+1. **推理模型输出预算耗尽导致空回复** —— `deepseek-flash` 是推理模型，`reasoning_content`
+   与正式回答**共用** `max_tokens`。设 2048 时思考用光预算，正文长度为 0。
+   已修：① SSE 解析把 `reasoning_content` 独立成 `reasoning` 分块（不展示给学生但单独计数）；
+   ② 检测到「正文为空 + 有思考 + finishReason=length」时**明确报错**而非返回空回复；
+   ③ 默认 `AI_MAX_OUTPUT_TOKENS` 提到 8192。
+2. **图片识别的题干未回填** —— 图片分析分两阶段（视觉识别 → 结构化分析），
+   第二阶段模型常不回填题干，导致最终 `stem` 为空、学生保存的错题没有题干。
+   已修：合并两阶段结果时以 Stage A 的真实识别结果兜底。
+3. （Phase 7 期间）`WrongAnswerRecord.nextReviewAt` 未回写、学科 `code` 被写进外键。
 
 ### 单元测试明细
 
@@ -91,10 +118,10 @@ Test Files  4 passed (4)      Tests  139 passed (139)
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| DeepSeek / OpenAI 兼容适配器 | 代码完成，**未真机验证** | 按官方文档实现（含 json_mode 降级、SSE 解析、错误码映射）。验收清单见 `docs/AI_PROVIDER.md` 第 5 节 |
-| 图片理解链路 | 代码完成，**未真机验证** | Mock 下链路可跑；真实视觉模型需配置 `AI_VISION_MODEL` |
-| Docker 部署 | 配置完成，**未执行** | `Dockerfile` + `docker-compose.yml` + `.dockerignore` 已编写并逐项注释；核对清单见 `docs/DEPLOY.md` 第 3 节 |
-| PostgreSQL 迁移 | 参考产物已生成，**未执行** | 12 项真机核对清单见 `docs/DATABASE.md` 第 6.3 节 |
+| DeepSeek / OpenAI 兼容适配器 | ✅ **已于 2026-10-17 真机验证** | 16 项验收全部通过；同时修复了推理模型的输出预算问题。复现：`node scripts/acceptance-ai.mjs` |
+| 图片理解链路 | ✅ **已于 2026-10-17 真机验证** | 用 Playwright 渲染真实题目截图后走完「上传 → OCR → 结构化分析」。复现：`node scripts/acceptance-ai-vision.mjs` |
+| Docker 部署 | ⚠️ 配置完成，**未执行** | `Dockerfile` + `docker-compose.yml` + `.dockerignore` 已编写并逐项注释；核对清单见 `docs/DEPLOY.md` 第 3 节 |
+| PostgreSQL 迁移 | ⚠️ 参考产物已生成，**未执行** | 12 项真机核对清单见 `docs/DATABASE.md` 第 6.3 节 |
 
 ---
 
@@ -173,30 +200,31 @@ Test Files  4 passed (4)      Tests  139 passed (139)
 
 ---
 
-## 8. 下一步：真实 API 验收说明
+## 8. 真实 API 验收（已完成）
 
-1. **密钥只放在本地环境变量里**，不要粘贴到聊天、报告或提交到仓库：
+于 2026-10-17 使用真实 DeepSeek 密钥完成，结果见第 1 节「真实 AI 验收明细」。
+密钥**只写入本地 `.env`**（已被 `.gitignore` 忽略），并经全历史扫描确认：
+所有提交中该密钥命中 **0 处**，`.env` 从未进入版本库。
 
-   ```bash
-   cd D:/project/2026-10-17-00-16-15
-   cp .env .env.mock.bak          # 保留可以随时切回 mock
-   # 编辑 .env：
-   #   AI_PROVIDER=deepseek
-   #   AI_API_KEY=<你的密钥>
-   #   AI_MODEL=deepseek-chat
-   npm run dev                    # 环境变量需要重启才生效
-   ```
+复现方式：
 
-2. 按 **`docs/AI_PROVIDER.md` 第 5 节**的清单逐项执行
-   （普通问答 / 多轮上下文 / 流式 / 结构化错题分析 / 图片理解 / 超时限流鉴权 / 成本与日志）。
+```bash
+# 1) 本地 .env 配置（密钥只放在这里，不要提交）
+#    AI_PROVIDER=deepseek
+#    AI_API_KEY=<你的密钥>
+#    AI_MODEL=deepseek-flash
+#    AI_VISION_MODEL=deepseek-flash
+#    AI_MAX_OUTPUT_TOKENS=8192     # 推理模型必须给足（见 docs/AI_PROVIDER.md 第 5 节）
+# 2) 重启服务（环境变量不会热更新）
+npm run dev
+# 3) 跑验收脚本（不会打印密钥）
+node scripts/acceptance-ai.mjs
+node scripts/acceptance-ai-vision.mjs
+```
 
-3. 每项记录 ✅/❌ 与证据；未执行的项目保持「未验证」。
-
-4. 验收完成后：
-
-   ```bash
-   cp .env.mock.bak .env && npm run dev
-   ```
+> ⚠️ **密钥轮换提醒**：如果密钥曾出现在聊天记录、截图或任何共享渠道中，
+> 建议在验收完成后到 DeepSeek 控制台**吊销并重新生成**，再把新密钥写入本地 `.env`。
+> 密钥泄露的风险不在于仓库，而在于它途经的所有地方。
 
 ---
 

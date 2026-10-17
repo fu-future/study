@@ -43,6 +43,15 @@ export type RawTextResult = {
 
 export type RawStreamChunk =
   | { kind: 'text'; text: string }
+  /**
+   * 推理模型的「思考过程」分块（如 DeepSeek 的 `reasoning_content`）。
+   *
+   * 为什么要单独一个 kind 而不是混进 text：
+   *   1. 学生界面**不应该**把模型的思考草稿当成答案展示；
+   *   2. 但它会真实消耗输出预算 —— 必须能被统计到，
+   *      否则会出现「用量对得上、正文却空着」这种难以排查的情况。
+   */
+  | { kind: 'reasoning'; text: string }
   | { kind: 'usage'; usage: Usage }
   | { kind: 'finish'; finishReason?: string };
 
@@ -508,6 +517,7 @@ export abstract class AbstractAiProvider implements AiProvider {
 
           if (stream) {
             let completionChars = 0;
+            let reasoningChars = 0;
             let usage: Usage | undefined;
             let finishReason: string | undefined;
 
@@ -515,6 +525,9 @@ export abstract class AbstractAiProvider implements AiProvider {
               if (chunk.kind === 'text') {
                 completionChars += chunk.text.length;
                 yield { type: 'delta', text: chunk.text };
+              } else if (chunk.kind === 'reasoning') {
+                // 思考过程不展示给学生，但必须计数（它占用了输出预算）
+                reasoningChars += chunk.text.length;
               } else if (chunk.kind === 'usage') {
                 usage = chunk.usage;
               } else {
@@ -523,6 +536,22 @@ export abstract class AbstractAiProvider implements AiProvider {
             }
 
             cleanup();
+
+            /**
+             * 关键防护：推理模型把输出预算全部花在思考上时，正文会是空的。
+             * 这种情况下**必须明确报错**，而不是返回一条空回复 ——
+             * 空回复对学生来说比报错更糟（他以为这就是全部答案）。
+             */
+            if (completionChars === 0 && reasoningChars > 0 && finishReason === 'length') {
+              yield {
+                type: 'error',
+                code: 'AI_INPUT_TOO_LONG',
+                message:
+                  '模型在思考阶段用尽了输出长度，没能写出正式回答。请在 .env 中调大 AI_MAX_OUTPUT_TOKENS（例如 8192），或把问题拆得更短一些。',
+              };
+              return;
+            }
+
             const latencyMs = Date.now() - started;
             if (usage) yield { type: 'usage', usage };
 

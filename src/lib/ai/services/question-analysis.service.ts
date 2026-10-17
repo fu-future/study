@@ -242,13 +242,33 @@ async function runAnalysis(params: {
     });
   }
 
+  /**
+   * 合并两个阶段的结果。
+   *
+   * 为什么必须合并：图片分析分两步走 ——
+   *   Stage A 用视觉模型做「识别」（题干/选项/答案），
+   *   Stage B 用文本模型做「分析」。
+   * Stage B 的模型经常只回答"怎么解"而**不回填题干**（它觉得那是已知输入），
+   * 如果这里不做兜底，就会出现「识别明明成功了，最终题干却是空的」这种数据丢失，
+   * 学生保存下来的错题会没有题干。
+   *
+   * 注意：Stage A 的识别结果**也是真实模型输出**，不是我们编造的，因此可以直接采用。
+   */
+  const mergedStem = analysis.stem.trim() || recognizedStem;
+  const mergedChoices = analysis.choices.length > 0 ? analysis.choices : recognizedChoices;
+  const mergedAnswer = analysis.correctAnswer.trim() || (recognizedAnswer ?? '');
+
   const normalized: QuestionAnalysisOutput = {
     ...analysis,
     subject: normalizeSubject(analysis.subject),
     errorTypes: normalizeErrorTypes(analysis.errorTypes),
     knowledgePoints: matchedKnowledgePointCodes,
-    // 题干缺失时强制标记为需要学生确认
-    needsUserConfirmation: analysis.needsUserConfirmation || !recognizedStem.trim() || Boolean(ocrNotes),
+    stem: mergedStem,
+    choices: mergedChoices,
+    correctAnswer: mergedAnswer,
+    // 题干最终仍为空 / 识别过程有提示时，才标记为需要学生确认
+    needsUserConfirmation:
+      analysis.needsUserConfirmation || !mergedStem.trim() || Boolean(ocrNotes),
     confidence: analysis.mock ? 0 : analysis.confidence,
   };
 

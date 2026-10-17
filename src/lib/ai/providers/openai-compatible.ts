@@ -417,12 +417,28 @@ export class OpenAiCompatibleProvider extends AbstractAiProvider {
 
                 try {
                   const parsed = JSON.parse(data) as {
-                    choices?: { delta?: { content?: string }; finish_reason?: string }[];
+                    choices?: {
+                      delta?: { content?: string | null; reasoning_content?: string | null };
+                      finish_reason?: string;
+                    }[];
                     usage?: { prompt_tokens?: number; completion_tokens?: number };
                   };
 
-                  const delta = parsed.choices?.[0]?.delta?.content;
-                  if (delta) yield { kind: 'text', text: delta };
+                  const delta = parsed.choices?.[0]?.delta;
+
+                  /**
+                   * 推理模型（如 deepseek-flash）会先流式返回 `reasoning_content`（思考过程），
+                   * 之后才是 `content`（正式回答）。两者必须分开处理：
+                   *   - 思考过程不展示给学生（那是草稿，不是答案）
+                   *   - 但要单独上报，因为它真实占用输出预算，
+                   *     否则会出现「用量满了、正文却是空的」这种诡异现象
+                   */
+                  if (delta?.reasoning_content) {
+                    yield { kind: 'reasoning', text: delta.reasoning_content };
+                  }
+                  if (delta?.content) {
+                    yield { kind: 'text', text: delta.content };
+                  }
 
                   const finish = parsed.choices?.[0]?.finish_reason;
                   if (finish) yield { kind: 'finish', finishReason: finish };

@@ -94,11 +94,28 @@ AI_RATE_LIMIT_PER_MINUTE=20               # 每用户每分钟 AI 请求上限�
 
 ---
 
-## 5. 真实 API 验收清单（需要 API Key 才能执行）
+## 5. 真实 API 验收清单
 
-> ⚠️ **当前状态：未执行。** 开发环境没有可用的真实 API Key，
-> 因此**没有做过真机验证**。以下清单供你配置好 Key 后手动逐项执行。
-> 在你执行并记录结果之前，**不要声称真实 AI 已经验证通过**。
+> ✅ **当前状态：已于 2026-10-17 用真实 DeepSeek 密钥完成验收。**
+>
+> | 验收项 | 结果 | 实测证据 |
+> |---|---|---|
+> | 5.1 普通文本答疑 | ✅ 通过 | 一次生成 1100+ 字真实讲解，含 LaTeX 公式，未出现 Mock 文案 |
+> | 5.2 多轮上下文 | ✅ 通过 | 追问 1193 字，内容与上一轮主题连贯；会话落库 4 条消息 |
+> | 5.3 流式输出 | ✅ 通过 | `text/event-stream` + `no-transform`，逐块 delta，`[DONE]` 收尾 |
+> | 5.4 结构化错题分析 | ✅ 通过 | 一次通过 Zod 校验，`confidence=0.92`，错误分类在枚举内 |
+> | 5.4 知识点白名单 | ✅ 通过 | 命中 `MATH-G2-DERIV-03` / `MATH-G1-FUNC-02`，**编造并被丢弃 0 个** |
+> | 5.5 图片理解 | ✅ 通过 | 渲染真实题目截图 → OCR 题干完全正确 → 解析正确（模型自我纠错 `f(-1)=4`） |
+> | 5.6 输入长度限制 | ✅ 通过 | 4100 字输入被本地 400 拦截，未打到上游 |
+> | 5.7 用量统计 | ✅ 通过 | `promptTokens=662 / completionTokens=4634`，来自上游真实返回 |
+> | 5.8 红线检查 | ✅ 通过 | 未编造教材页码 / 视频链接 / 知识点编号 |
+>
+> 复现命令：
+> ```bash
+> node scripts/acceptance-ai.mjs          # 文本 / 多轮 / 流式 / 结构化 / 限制
+> node scripts/acceptance-ai-vision.mjs    # 图片理解（自动渲染题目截图）
+> ```
+> 两项脚本均**不会打印密钥**。
 
 ### 5.0 前置
 
@@ -110,11 +127,32 @@ cp .env .env.mock.bak
 # 2) 填入真实配置
 #    AI_PROVIDER=deepseek
 #    AI_API_KEY=sk-你的密钥
-#    AI_MODEL=deepseek-chat
+#    AI_MODEL=deepseek-flash
+#    AI_VISION_MODEL=deepseek-flash     # 该模型 input_modalities 含 image
+#    AI_MAX_OUTPUT_TOKENS=8192          # ⚠️ 见下方"推理模型"说明
 
 # 3) 重启服务（改环境变量必须重启）
 npm run dev
 ```
+
+### ⚠️ 推理模型的关键差异（实测踩坑记录）
+
+`deepseek-flash`（DeepSeek-V4.1-Flash）是**推理模型**：它的流式响应里会先返回
+`delta.reasoning_content`（思考过程），之后才是 `delta.content`（正式回答）。
+两者**都计入 `max_tokens`**。
+
+实测现象：`AI_MAX_OUTPUT_TOKENS=2048` 时，思考过程用光了全部预算，
+`completionTokens=2048` 而正文长度为 **0** —— 学生看到一条空回复。
+
+项目已做两处处理：
+
+1. `openai-compatible.ts` 把 `reasoning_content` 解析为独立的 `reasoning` 分块：
+   **不混进答案**（思考草稿不是答案），但单独计数（它真实占用预算）。
+2. `provider.ts` 在「正文为空 + 有思考内容 + finishReason=length」时
+   **明确报错**并提示调大 `AI_MAX_OUTPUT_TOKENS`，而不是返回空回复。
+
+使用推理模型时请把 `AI_MAX_OUTPUT_TOKENS` 设为 **≥ 8192**。
+`deepseek-v4-pro` 同属这一代模型，规则相同。
 
 验证配置是否被正确加载（**只报告状态，不回显密钥**）：
 
