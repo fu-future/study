@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { gotoApp, registerOnboardedUser } from './helpers';
+import { fillControlledInput, gotoApp, registerOnboardedUser } from './helpers';
 
 /**
  * AI 答疑 E2E（Mock 模式）。
@@ -18,9 +18,13 @@ test.describe('AI 答疑（Mock 流式）', () => {
 
     await gotoApp(page, '/tutor');
 
-    const input = page.locator('textarea').first();
+    const input = page.locator('#tutor-input');
     await expect(input).toBeVisible({ timeout: 30_000 });
-    await input.fill('导数的几何意义是什么？我总把平均变化率当成瞬时变化率。');
+
+    const counter = page.getByText(/Enter 发送/);
+    await fillControlledInput(input, '导数的几何意义是什么？我总把平均变化率当成瞬时变化率。', async () => {
+      await expect(counter).toContainText(/[1-9]\d*\/4000/, { timeout: 2_000 });
+    });
 
     await page.getByRole('button', { name: '发送', exact: true }).click();
 
@@ -36,7 +40,10 @@ test.describe('AI 答疑（Mock 流式）', () => {
 
     await gotoApp(page, '/tutor');
     const questionText = '为什么函数在某点可导一定连续，但连续不一定可导？';
-    await page.locator('textarea').first().fill(questionText);
+    const composer = page.locator('#tutor-input');
+    await fillControlledInput(composer, questionText, async () => {
+      await expect(page.getByText(/Enter 发送/)).toContainText(/[1-9]\d*\/4000/, { timeout: 2_000 });
+    });
     await page.getByRole('button', { name: '发送', exact: true }).click();
 
     await expect(page.getByText(/Mock 模式/).first()).toBeVisible({ timeout: 40_000 });
@@ -83,14 +90,38 @@ test.describe('AI 答疑（Mock 流式）', () => {
     await registerOnboardedUser(page.request);
     await gotoApp(page, '/tutor');
 
-    const input = page.locator('textarea').first();
+    // 用稳定的 id 定位，而不是 textarea 的 DOM 顺序 ——
+    // 页面里以后还会加别的输入框（例如题目录入对话框），顺序不再可靠。
+    const input = page.locator('#tutor-input');
     await expect(input).toBeVisible({ timeout: 30_000 });
 
     const sendButton = page.getByRole('button', { name: '发送', exact: true });
+    // 计数器所在的 <p> 整段是「Enter 发送 · Shift + Enter 换行 · 4/4000」，
+    // 所以必须用 toContainText，而不是精确匹配整段文本
+    const counter = page.getByText(/Enter 发送/);
+
     await expect(sendButton).toBeDisabled();
 
-    await input.fill('测试内容');
+    // 等 React 真正收到输入（hydration 之前的事件会被丢掉）
+    await fillControlledInput(
+      input,
+      '测试内容',
+      async () => {
+        await expect(counter).toContainText('4/4000', { timeout: 2_000 });
+      },
+    );
+
     await expect(sendButton).toBeEnabled();
+
+    // 清空后应重新变回禁用
+    await fillControlledInput(
+      input,
+      '',
+      async () => {
+        await expect(counter).toContainText('0/4000', { timeout: 2_000 });
+      },
+    );
+    await expect(sendButton).toBeDisabled();
   });
 
   test('未登录访问答疑接口返回 401', async ({ page }) => {

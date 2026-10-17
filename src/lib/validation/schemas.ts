@@ -97,6 +97,19 @@ export const questionCreateSchema = z.object({
   chapter: z.string().trim().max(120).nullable().optional(),
   stem: z.string().trim().min(1, '请填写题干').max(6000, '题干太长了，请只保留关键部分'),
   stemFormat: z.enum(['text', 'markdown', 'latex']).default('text'),
+  /**
+   * 已上传图片的存储 id（来自 /api/questions/upload，服务端生成 uuid.ext）。
+   *
+   * 为什么要显式声明并做严格校验：这个值会被拼进文件读取路径。
+   * 只接受「36 位 UUID + 白名单扩展名」这一种形态，
+   * 从而在入口处就堵死 `../` 之类的路径穿越尝试。
+   */
+  imagePath: z
+    .string()
+    .trim()
+    .regex(/^[0-9a-f-]{36}\.(png|jpg|webp)$/i, '图片标识不合法')
+    .nullable()
+    .optional(),
   choices: z.array(z.string().trim().max(500)).max(10).optional(),
   correctAnswer: z.string().trim().max(1000).nullable().optional(),
   explanation: z.string().trim().max(6000).nullable().optional(),

@@ -233,6 +233,7 @@ data: [DONE]
 | `subjectId` | ✅ | 学科 id 或 code |
 | `stem` | ✅ | 1–6000 字符 |
 | `choices` | | 最多 10 项 |
+| `imagePath` | | 已上传图片的存储 id（来自 `/api/questions/upload`，形如 `uuid.png`）。**只接受「36 位 UUID + 白名单扩展名」**，在入口处堵死路径穿越；用于把题目与原始截图关联起来 |
 | `correctAnswer` / `explanation` / `chapter` / `grade` / `sourceNote` | | |
 | `createMistake` | | `true` 时建立错题记录 + 首次复习计划 |
 | `studentAnswer` | | 学生原始答案 |

@@ -89,9 +89,18 @@ function uploadWithProgress(
 export function MistakeUploadDialog({
   subjects,
   defaultSubjectId,
+  onCreated,
+  triggerLabel = '上传图片识别',
 }: {
   subjects: { id: string; name: string }[];
   defaultSubjectId?: string;
+  /**
+   * 保存成功后的回调：把刚建立的题目交回给调用方。
+   * 答疑页用它把「刚拍/刚传的题目」直接挂到当前对话上，学生就能马上开始问。
+   */
+  onCreated?: (question: { id: string; stem: string; imageUrl: string | null }) => void;
+  /** 触发按钮文案（错题本用默认值，答疑页用「拍照 / 上传题目」） */
+  triggerLabel?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -108,6 +117,8 @@ export function MistakeUploadDialog({
   const [saved, setSaved] = React.useState(false);
 
   const [analysis, setAnalysis] = React.useState<QuestionAnalysisDto | null>(null);
+  // 必须记住它：保存题目时要带上，否则上传的原图会变成孤儿文件
+  const [uploadId, setUploadId] = React.useState<string | null>(null);
   const [stem, setStem] = React.useState('');
   const [choicesText, setChoicesText] = React.useState('');
   const [correctAnswer, setCorrectAnswer] = React.useState('');
@@ -128,6 +139,7 @@ export function MistakeUploadDialog({
   function reset() {
     setFile(null);
     setAnalysis(null);
+    setUploadId(null);
     setStem('');
     setChoicesText('');
     setCorrectAnswer('');
@@ -153,6 +165,7 @@ export function MistakeUploadDialog({
     setProgress(0);
     try {
       const uploaded = await uploadWithProgress(file, setProgress);
+      setUploadId(uploaded.uploadId);
       setUploading(false);
       setAnalyzing(true);
 
@@ -189,10 +202,14 @@ export function MistakeUploadDialog({
 
     setSaving(true);
     try {
-      await apiPost('/api/questions', {
+      const created = await apiPost<{
+        question: { id: string; stem: string; imageUrl: string | null };
+      }>('/api/questions', {
         subjectId,
         stem: stem.trim(),
         stemFormat: 'text',
+        // 把上传的原图关联到题目
+        imagePath: uploadId,
         choices: choicesText
           .split('\n')
           .map((line) => line.trim())
@@ -204,6 +221,11 @@ export function MistakeUploadDialog({
         createMistake: true,
       });
       setSaved(true);
+      onCreated?.({
+        id: created.question.id,
+        stem: created.question.stem,
+        imageUrl: created.question.imageUrl ?? null,
+      });
       router.refresh();
       window.setTimeout(() => {
         setOpen(false);
@@ -231,7 +253,7 @@ export function MistakeUploadDialog({
       <Dialog.Trigger asChild>
         <Button variant="outline">
           <Upload aria-hidden />
-          上传图片识别
+          {triggerLabel}
         </Button>
       </Dialog.Trigger>
 

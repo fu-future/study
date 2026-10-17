@@ -222,8 +222,39 @@ export async function loginViaForm(page: Page, email: string, password: string):
   await expect(page).toHaveURL(/\/dashboard|\/onboarding/, { timeout: 30_000 });
 }
 
-/** 等待页面主内容渲染完成（避免断言发生在 hydration 之前） */
+/**
+ * 等待页面主内容渲染完成，并**等到可交互**再交给用例。
+ *
+ * 为什么不能只用 domcontentloaded：
+ *   本站是客户端组件驱动的界面。`domcontentloaded` 只保证 HTML 到了，
+ *   此时 React 可能还没 hydration 完成 —— 这时 fill() 发出的 input 事件
+ *   会被丢掉（表现：输入框看着填了、React 状态却是空的，按钮仍禁用）。
+ *   在冷启动的 dev server 上（首次访问某路由需要编译）这个窗口特别明显。
+ *
+ * `networkidle` 是个足够好的"资源已就绪"信号；即使因为长连接导致它超时，
+ * 也不应让用例直接失败，所以超时被吞掉。
+ */
 export async function gotoApp(page: Page, pathname: string): Promise<void> {
-  await page.goto(pathname, { waitUntil: 'domcontentloaded' });
+  // 'load' 比 domcontentloaded 更接近可交互状态
+  await page.goto(pathname, { waitUntil: 'load' });
+  await page.waitForLoadState('networkidle').catch(() => undefined);
   await page.locator('#main').waitFor({ state: 'visible', timeout: 30_000 });
+}
+
+/**
+ * 往受控输入框里填内容，并确认 **React 真的收到了**。
+ *
+ * 受控组件在 hydration 之前会丢事件，所以"填一次就断言"必然间歇性失败。
+ * 这里用 toPass 重试，直到 UI 反映出新值（由调用方给出的校验函数判断）。
+ */
+export async function fillControlledInput(
+  locator: import('@playwright/test').Locator,
+  value: string,
+  verify: () => Promise<void>,
+  timeout = 30_000,
+): Promise<void> {
+  await expect(async () => {
+    await locator.fill(value);
+    await verify();
+  }).toPass({ timeout });
 }

@@ -64,6 +64,8 @@ export const POST = withApiHandler(async (request: Request) => {
       chapter: body.chapter ?? null,
       stem: body.stem,
       stemFormat: body.stemFormat,
+      // 把上传的原图关联到题目上，否则学生录入的截图会变成"孤儿文件"
+      imagePath: body.imagePath ?? null,
       choices: body.choices,
       correctAnswer: body.correctAnswer ?? null,
       explanation: body.explanation ?? null,

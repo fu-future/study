@@ -28,9 +28,19 @@ import { cn } from '@/lib/utils';
 export function MistakeEntryDialog({
   subjects,
   defaultSubjectId,
+  onCreated,
+  triggerLabel = '手动录入题目',
+  triggerVariant = 'default',
 }: {
   subjects: { id: string; name: string }[];
   defaultSubjectId?: string;
+  /**
+   * 保存成功后的回调：把刚建立的题目交回给调用方。
+   * 答疑页用它把手工输入的题目直接挂到当前对话上。
+   */
+  onCreated?: (question: { id: string; stem: string; imageUrl: string | null }) => void;
+  triggerLabel?: string;
+  triggerVariant?: 'default' | 'outline';
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -118,7 +128,9 @@ export function MistakeEntryDialog({
 
     setSubmitting(true);
     try {
-      await apiPost('/api/questions', {
+      const created = await apiPost<{
+        question: { id: string; stem: string; imageUrl: string | null };
+      }>('/api/questions', {
         subjectId,
         stem: stem.trim(),
         stemFormat: 'text',
@@ -131,6 +143,11 @@ export function MistakeEntryDialog({
         createMistake: true,
       });
       setSaved(true);
+      onCreated?.({
+        id: created.question.id,
+        stem: created.question.stem,
+        imageUrl: created.question.imageUrl ?? null,
+      });
       // 让列表重新从服务端取数据（新错题会立刻出现在最前面）
       router.refresh();
       window.setTimeout(() => {
@@ -156,9 +173,9 @@ export function MistakeEntryDialog({
       }}
     >
       <Dialog.Trigger asChild>
-        <Button>
+        <Button variant={triggerVariant}>
           <Plus aria-hidden />
-          手动录入题目
+          {triggerLabel}
         </Button>
       </Dialog.Trigger>
 

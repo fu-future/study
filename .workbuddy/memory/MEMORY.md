@@ -56,3 +56,31 @@
 - `next build` 收尾清理需临时 `CODEBUDDY_SAFE_DELETE_ENABLED=0`（范围仅 `.next`）。
 - 改 `next.config.mjs` 会让正在运行的 dev server 崩溃退出，改完手动重启。
 
+## GitHub 同步（本机特有，非常重要的坑）
+- 仓库：https://github.com/fu-future/study.git（分支 `main`）
+- 提交身份：`fu-future` / `fu-future@users.noreply.github.com`（本地仓库级配置）
+- ⚠️ **github.com 的 TLS 证书由 `CN=SteamTools Certificate, O=BeyondDimension`
+  签发** —— 用户装了 Watt Toolkit（原 Steam++），它在本地做 github.com 的 TLS 拦截。
+  由此产生的两个连锁问题与解法（已持久化到本仓库 `.git/config`）：
+  1. schannel 后端报 `CRYPT_E_NO_REVOCATION_CHECK`（拦截证书无吊销列表，
+     `http.schannelCheckRevoke=false` 也压不住）
+  2. 换 openssl 后端后报 `unable to get local issuer certificate`
+     （SteamTools 根证书不在 Mozilla 信任列表里）
+  ✅ 解法：`git config --local http.sslBackend openssl`
+  + `http.sslCAInfo=C:/Users/jinqiu/.git-ca-bundle-steamtools.pem`
+  （该文件 = Git 自带 `mingw64/etc/ssl/certs/ca-bundle.crt` + SteamTools 根证书 PEM）
+  + `http.proxy ""`（不要用环境里的 127.0.0.1:14230 代理）
+- 本机 `http.credential.helper` 指向 PortableGit **1.2.0** 路径，但实际只有 **1.3.0**，
+  值还带了个多余的前导 `|` → 每次 push 都打印 `git: 'credential-' is not a git command`。
+  推送仍成功（本环境有凭据注入），但换机器/私有仓库前应修掉。
+- `curl` 访问外部必须加 `--noproxy '*'`（环境设了 HTTP_PROXY=127.0.0.1:14230）。
+
+## DeepSeek 接入（已真机验证）
+- `AI_PROVIDER=deepseek`、`AI_BASE_URL=https://api.deepseek.com`
+- 平台只有两个模型：`deepseek-flash`（V4.1-Flash，**支持图片输入**）、
+  `deepseek-v4-pro`（仅文本）。都支持 1M 上下文。
+- ⚠️ **`deepseek-flash` 是推理模型**：流式先返回 `delta.reasoning_content`（思考过程），
+  之后才是 `delta.content`，**两者共用 `max_tokens`**。`AI_MAX_OUTPUT_TOKENS` 必须 ≥ 8192，
+  否则思考耗尽预算、正文为空。
+- 验收脚本（不打印密钥）：`scripts/acceptance-ai.mjs`、`scripts/acceptance-ai-vision.mjs`
+

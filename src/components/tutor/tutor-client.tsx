@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
+  FileText,
   Info,
   Loader2,
   MessageCircle,
@@ -13,6 +14,7 @@ import {
   Send,
   Sparkles,
   Square,
+  X,
 } from 'lucide-react';
 import {
   Alert,
@@ -27,6 +29,8 @@ import {
   Textarea,
 } from '@/components/ui/primitives';
 import { Markdown, plainPreview } from '@/components/markdown';
+import { MistakeUploadDialog } from '@/components/mistakes/mistake-upload-dialog';
+import { MistakeEntryDialog } from '@/components/mistakes/mistake-entry-dialog';
 import {
   DEFAULT_TEACHING_MODE,
   TEACHING_MODE_CODES,
@@ -85,6 +89,17 @@ export function TutorClient({ subjects }: { subjects: SubjectDto[] }) {
   const [subjectId, setSubjectId] = React.useState('');
   const [input, setInput] = React.useState('');
   const [streaming, setStreaming] = React.useState(false);
+  /**
+   * 学生刚交给 AI 的那道题。
+   *
+   * 有了它，/api/chat 会把题干、已记录的答案与解析一起作为背景交给模型，
+   * 学生就不用再把题目重新打一遍 —— 这也是「答疑」和「错题本」打通的连接点。
+   */
+  const [attachedQuestion, setAttachedQuestion] = React.useState<{
+    id: string;
+    stem: string;
+    imageUrl: string | null;
+  } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [showList, setShowList] = React.useState(false);
 
@@ -153,6 +168,24 @@ export function TutorClient({ subjects }: { subjects: SubjectDto[] }) {
   // 离开页面时取消未完成的请求
   React.useEffect(() => () => abortRef.current?.abort(), []);
 
+  /**
+   * 把刚录入/识别的题目挂到当前对话上。
+   *
+   * 同时预填一句可以直接发送的起手问题 —— 面向高中生，
+   * 「先给提示、不要直接给答案」是默认更有利于学习的问法（引导模式）。
+   */
+  function attachQuestion(question: { id: string; stem: string; imageUrl: string | null }) {
+    setAttachedQuestion(question);
+    setError(null);
+    setInput((current) =>
+      current.trim()
+        ? current
+        : question.imageUrl
+          ? '这是我刚上传的题目。请先告诉我该从哪里入手，不要直接给完整答案。'
+          : '这是我想要问的题目。请先给我一个思路提示，不要直接给完整答案。',
+    );
+  }
+
   // ---- 发送 + SSE 解析 ----
   async function sendMessage(rawText: string) {
     const text = rawText.trim();
@@ -199,7 +232,10 @@ export function TutorClient({ subjects }: { subjects: SubjectDto[] }) {
           message: text,
           mode,
           ...(subjectId ? { subjectId } : {}),
-          ...(questionId ? { questionId } : {}),
+          // 已关联的题目优先于从错题本跳转过来带的 questionId
+          ...(attachedQuestion?.id || questionId
+            ? { questionId: attachedQuestion?.id ?? questionId }
+            : {}),
         }),
       });
 
@@ -563,6 +599,58 @@ export function TutorClient({ subjects }: { subjects: SubjectDto[] }) {
                 void sendMessage(input);
               }}
             >
+              {/* 题目入口：拍照 / 上传图片识别，或手动输入题干 */}
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed bg-muted/30 p-2.5">
+                <span className="pl-1 text-xs text-muted-foreground">要把一道题目交给 AI？</span>
+                <MistakeUploadDialog
+                  subjects={subjects}
+                  defaultSubjectId={subjectId || undefined}
+                  triggerLabel="拍照 / 上传题目图片"
+                  onCreated={attachQuestion}
+                />
+                <MistakeEntryDialog
+                  subjects={subjects}
+                  defaultSubjectId={subjectId || undefined}
+                  triggerLabel="手动输入题目"
+                  triggerVariant="outline"
+                  onCreated={attachQuestion}
+                />
+              </div>
+
+              {attachedQuestion ? (
+                <div className="rounded-xl border bg-muted/40 p-3">
+                  <div className="flex items-start gap-3">
+                    {attachedQuestion.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={attachedQuestion.imageUrl}
+                        alt="已关联的题目图片"
+                        className="size-16 shrink-0 rounded-lg border object-cover"
+                      />
+                    ) : (
+                      <span className="flex size-16 shrink-0 items-center justify-center rounded-lg border bg-card text-muted-foreground">
+                        <FileText aria-hidden className="size-5" />
+                      </span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        已关联这道题（AI 会看到题干、答案与解析）
+                      </p>
+                      <p className="mt-1 line-clamp-3 text-sm">{attachedQuestion.stem}</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="取消关联这道题"
+                      onClick={() => setAttachedQuestion(null)}
+                    >
+                      <X aria-hidden />
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
               <Label htmlFor="tutor-input">你的问题</Label>
               <Textarea
                 id="tutor-input"
