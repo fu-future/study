@@ -32,9 +32,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="min-h-screen lg:flex">
+    // min-h-dvh 而不是 min-h-screen：手机上 100vh 会把浏览器地址栏算进去，
+    // 导致页面比可视区高一截、出现多余的纵向滚动条。
+    <div className="min-h-dvh lg:flex">
       <AppNav displayName={user.displayName} grade={profile.grade} aiModeBadge={aiModeBadge} />
-      <div id="main" className="mx-auto w-full max-w-5xl flex-1 p-4 sm:p-6">
+      {/*
+        pb-24 给手机底栏留出空间（底栏 56px + iPhone 安全区约 34px），
+        否则页面最后一行内容会被底栏永久压住。桌面没有底栏，所以 lg 回到常规内边距。
+      */}
+      <div id="main" className="mx-auto w-full max-w-5xl flex-1 p-4 pb-24 sm:p-6 sm:pb-24 lg:pb-6">
         {children}
       </div>
     </div>

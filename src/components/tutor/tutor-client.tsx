@@ -386,7 +386,7 @@ export function TutorClient({ subjects }: { subjects: SubjectDto[] }) {
         </Alert>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
         {/* 会话列表 */}
         <aside className="lg:sticky lg:top-4 lg:self-start">
           <Button

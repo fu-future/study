@@ -147,7 +147,7 @@ export default async function PlannerPage() {
                 </p>
               ) : null}
 
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="rounded-lg border bg-card p-3">
                   <p className="text-xs text-muted-foreground">任务数</p>
                   <p className="mt-1 text-sm font-medium">

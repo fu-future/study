@@ -24,8 +24,16 @@ import { Button } from '@/components/ui/primitives';
  * 应用导航。
  *
  * 响应式策略：
- *   - 桌面 / 平板（≥ lg）：左侧固定侧边栏
- *   - 手机（< lg）：顶栏 + 抽屉，避免底部 Tab 被系统手势条挡住
+ *   - 桌面 / 平板（≥ lg）：左侧固定侧边栏，一屏能看到全部入口
+ *   - 手机（< lg）：顶栏（品牌 + 菜单抽屉）+ **底部 Tab 栏**
+ *
+ * 为什么手机端要专门做底栏：
+ *   高中生绝大多数时间在手机上用，而「首页 → 答疑 → 错题本 → 计划」之间
+ *   来回跳是这个产品最高频的动作。只靠抽屉的话每次切换都要两次点击，
+ *   在单手操作时尤其别扭。底栏一次可达，拇指也在自然活动范围内。
+ *   不常用的入口（知识点地图、资源、设置）继续留在抽屉里，避免底栏超过 5 项。
+ *   底栏用 env(safe-area-inset-bottom) 让开 iPhone 的 Home 指示条。
+ *
  * 无障碍：抽屉打开时锁定滚动、Esc 关闭、当前页用 aria-current 标记。
  */
 
@@ -38,6 +46,15 @@ const NAV_ITEMS = [
   { href: '/planner', label: '学习计划', icon: CalendarDays },
   { href: '/reports', label: '学习报告', icon: BarChart3 },
   { href: '/settings', label: '设置', icon: Settings },
+] as const;
+
+/** 手机底栏：只放最高频的 5 个入口，文案也缩到 2–3 个字以适配窄屏 */
+const MOBILE_TABS = [
+  { href: '/dashboard', label: '首页', icon: LayoutDashboard },
+  { href: '/tutor', label: '答疑', icon: MessageCircle },
+  { href: '/mistakes', label: '错题本', icon: BookX },
+  { href: '/planner', label: '计划', icon: CalendarDays },
+  { href: '/reports', label: '报告', icon: BarChart3 },
 ] as const;
 
 export function AppNav({
@@ -199,6 +216,39 @@ export function AppNav({
           </div>
         </div>
       ) : null}
+
+      {/* 手机底部 Tab 栏 */}
+      <nav
+        aria-label="快捷导航"
+        className="no-print fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 backdrop-blur lg:hidden"
+        // iPhone 的 Home 指示条会盖住底部约 34px，用它自己的安全区把内容顶上去
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="flex items-stretch">
+          {MOBILE_TABS.map((item) => {
+            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? 'page' : undefined}
+                // min-h-14（56px）比 44px 的最小触控目标更宽裕：高中生单手拿手机时误触明显更少
+                className={cn(
+                  'flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium transition-colors',
+                  active ? 'text-primary' : 'text-muted-foreground active:bg-muted',
+                )}
+              >
+                <Icon
+                  aria-hidden
+                  className={cn('size-[22px]', active ? 'text-primary' : 'text-muted-foreground')}
+                />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </>
   );
 }

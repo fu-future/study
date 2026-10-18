@@ -20,7 +20,7 @@ export function AuthShell({
       id="main"
       className="mx-auto flex min-h-screen w-full max-w-5xl flex-col justify-center px-4 py-10 sm:px-6"
     >
-      <div className="grid gap-8 lg:grid-cols-[1fr_minmax(0,26rem)] lg:items-center">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_minmax(0,26rem)] lg:items-center">
         <section className="space-y-4">
           <div className="flex items-center gap-2 text-primary">
             <span className="flex size-9 items-center justify-center rounded-lg bg-primary/10">

@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { cookies } from 'next/headers';
-import { getEnv } from '@/lib/env';
+import { getEnv, resolveCookieSecure } from '@/lib/env';
 
 /**
  * 会话管理（签名 Cookie）。
@@ -71,12 +71,16 @@ export function verifySessionToken(token: string | undefined | null, now = Date.
 }
 
 export function sessionCookieOptions() {
-  const isProd = process.env.NODE_ENV === 'production';
+  // 不能简单写成 `secure: NODE_ENV === 'production'`：
+  // 把电脑当服务器给手机用时是 http://192.168.x.x:3100，
+  // 带 Secure 的 Cookie 不会被浏览器保存/回传，登录会"成功但存不住"。
+  // 实际取值由 COOKIE_SECURE 决定（auto 时看 APP_URL 是否 https）。
+  const secure = resolveCookieSecure(getEnv());
   return {
     name: SESSION_COOKIE_NAME,
     httpOnly: true,
     sameSite: 'lax' as const,
-    secure: isProd,
+    secure,
     path: '/',
     maxAge: SESSION_TTL_SECONDS,
   };

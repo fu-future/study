@@ -29,10 +29,11 @@ const buttonVariants = cva(
         link: 'text-primary underline underline-offset-4 hover:no-underline',
       },
       size: {
-        default: 'h-10 px-4 py-2',
-        sm: 'h-8 rounded-md px-3 text-[13px]',
-        lg: 'h-11 rounded-lg px-6',
-        icon: 'h-9 w-9',
+        // 手机上 h-11（44px）是苹果与微信都推荐的最小触控高度；桌面没必要这么高
+        default: 'h-11 px-4 py-2 sm:h-10',
+        sm: 'h-9 rounded-md px-3 text-[13px] sm:h-8',
+        lg: 'h-12 rounded-lg px-6 sm:h-11',
+        icon: 'h-11 w-11 sm:h-9 sm:w-9',
       },
     },
     defaultVariants: { variant: 'default', size: 'default' },
@@ -114,7 +115,9 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
       <input
         ref={ref}
         className={cn(
-          'flex h-10 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60',
+          // 用 text-base（16px）而不是 text-sm：iOS Safari 在输入框字号小于 16px 时
+          // 会在聚焦瞬间自动放大整个页面，学生打完字页面就错位了。桌面仍用 14px。
+          'flex h-11 w-full rounded-lg border border-input bg-card px-3 py-2 text-base placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:text-sm',
           'aria-[invalid=true]:border-destructive',
           className,
         )}
@@ -132,7 +135,7 @@ export const Textarea = React.forwardRef<
     <textarea
       ref={ref}
       className={cn(
-        'flex min-h-[88px] w-full rounded-lg border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60',
+        'flex min-h-[88px] w-full rounded-lg border border-input bg-card px-3 py-2 text-base placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm',
         'aria-[invalid=true]:border-destructive',
         className,
       )}
@@ -150,7 +153,7 @@ export const Select = React.forwardRef<
     <select
       ref={ref}
       className={cn(
-        'flex h-10 w-full appearance-none rounded-lg border border-input bg-card bg-[length:16px] bg-[right_0.6rem_center] bg-no-repeat px-3 py-2 pr-9 text-sm disabled:opacity-60',
+        'flex h-11 w-full appearance-none rounded-lg border border-input bg-card bg-[length:16px] bg-[right_0.6rem_center] bg-no-repeat px-3 py-2 pr-9 text-base disabled:opacity-60 sm:h-10 sm:text-sm',
         // 用内联 SVG 做下拉箭头，避免额外依赖
         "bg-[url(\"data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")]",
         className,

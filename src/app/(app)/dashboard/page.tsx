@@ -122,7 +122,7 @@ export default async function DashboardPage() {
       </header>
 
       {/* 快速入口 */}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Card>
           <CardContent className="flex items-center justify-between gap-3 p-4">
             <div>
@@ -237,7 +237,7 @@ export default async function DashboardPage() {
       </Card>
 
       {/* 本周进度：三个指标分开 */}
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">本周学习时长</CardTitle>
@@ -311,7 +311,7 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {/* 待复习错题 */}
         <Card>
           <CardHeader>
@@ -457,7 +457,7 @@ export default async function DashboardPage() {
             </Alert>
           ) : (
             <>
-              <ul className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:grid-cols-6">
                 {MASTERY_ORDER.map((level) => (
                   <li key={level} className="rounded-lg border bg-card p-3 text-center">
                     <p className="text-lg font-semibold">{distribution[level] ?? 0}</p>

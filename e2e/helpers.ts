@@ -86,7 +86,8 @@ export async function registerOnboardedUser(
   return user;
 }
 
-/** 读取学科列表并返回数学学科 id（seed 数据里有数学） */export async function getMathSubjectId(context: APIRequestContext): Promise<string> {
+/** 读取学科列表并返回数学学科 id（seed 数据里有数学） */
+export async function getMathSubjectId(context: APIRequestContext): Promise<string> {
   const response = await context.get('/api/subjects');
   expect(response.status()).toBe(200);
 

@@ -165,7 +165,7 @@ export default async function MistakeDetailPage({ params }: { params: Promise<{ 
             </ul>
           ) : null}
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="rounded-lg border bg-card p-3">
               <p className="text-xs text-muted-foreground">我当时的答案</p>
               <p className="mt-1 text-sm">{wrongRecord?.studentAnswer || '（没有记录）'}</p>

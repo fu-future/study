@@ -57,6 +57,19 @@ const rawSchema = z.object({
   APP_URL: z.string().url().default('http://localhost:3000'),
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET 至少需要 32 个字符'),
 
+  /**
+   * 会话 Cookie 是否带 Secure 标记。
+   *
+   * auto（默认）= 看 APP_URL 是不是 https。
+   *
+   * 为什么需要这个开关：
+   *   Secure 的 Cookie 只在 HTTPS 下才会被浏览器回传。如果按「生产环境一律 secure」
+   *   硬编码，那么把电脑当服务器、手机用 http://192.168.x.x:3100 访问时，
+   *   登录接口会返回 200，但浏览器不保存也不回传 Cookie ——
+   *   表现就是「登录成功，一刷新又回到登录页」，而且完全不报错，很难排查。
+   */
+  COOKIE_SECURE: z.enum(['auto', 'true', 'false']).default('auto'),
+
   // 上传
   UPLOAD_MAX_BYTES: z.coerce.number().int().positive().max(50 * 1024 * 1024).default(5 * 1024 * 1024),
   UPLOAD_DIR: z.string().default('.data/uploads'),
@@ -135,6 +148,16 @@ export function resetEnvCache(): void {
 }
 
 /**
+ * 解析实际生效的 Cookie Secure 标记。
+ * 集中一处判断，避免「写 Cookie 的地方」和「设置页展示的地方」各算一次、结果不一致。
+ */
+export function resolveCookieSecure(value: Pick<Env, 'COOKIE_SECURE' | 'APP_URL'>): boolean {
+  if (value.COOKIE_SECURE === 'true') return true;
+  if (value.COOKIE_SECURE === 'false') return false;
+  return value.APP_URL.startsWith('https://');
+}
+
+/**
  * 不抛错的探测版本，用于 /api/health 与 /settings 页面展示配置状态。
  * 只返回「有没有配」，不返回任何值。
  */
@@ -145,6 +168,8 @@ export function describeEnvStatus(): {
   aiProvider: string;
   aiConfigured: boolean;
   aiVisionConfigured: boolean;
+  /** 会话 Cookie 是否会带 Secure（局域网 HTTP 部署时必须为 false，否则登录状态存不住） */
+  cookieSecure: boolean;
   errors: string[];
 } {
   const parsed = rawSchema.safeParse(process.env);
@@ -157,6 +182,7 @@ export function describeEnvStatus(): {
       aiProvider: (process.env.AI_PROVIDER ?? 'mock') as string,
       aiConfigured: false,
       aiVisionConfigured: false,
+      cookieSecure: false,
       errors: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`),
     };
   }
@@ -177,6 +203,7 @@ export function describeEnvStatus(): {
     aiProvider: v.AI_PROVIDER,
     aiConfigured: v.AI_PROVIDER !== 'mock' && Boolean(v.AI_API_KEY),
     aiVisionConfigured: Boolean(v.AI_VISION_MODEL),
+    cookieSecure: resolveCookieSecure(v),
     errors,
   };
 }

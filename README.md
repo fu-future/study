@@ -127,6 +127,8 @@ npm run db:studio     # 打开 Prisma Studio 可视化查看数据
 | `UPLOAD_MAX_BYTES` | 5242880 | 题目图片大小上限（5 MB） |
 | `UPLOAD_DIR` | `.data/uploads` | 图片存放目录（**不在 `public/` 下**，读取必须经过鉴权接口） |
 | `ALLOW_SELF_SIGNUP` | `true` | 建完账号后可改成 `false` 关闭注册 |
+| `COOKIE_SECURE` | `auto` | 会话 Cookie 是否带 Secure。`auto` = 按 `APP_URL` 是否 https 判断。**用局域网 http 访问时必须保持 `auto` 或 `false`**，设成 `true` 会"登录成功但刷新又回登录页" |
+| `PORT` | `3100`（`npm run lan`） | 对外服务端口 |
 | `NEXT_DIST_DIR` | `.next` | 构建目录（E2E 用它做隔离） |
 
 > **所有变量在启动时都会用 Zod 校验**（`src/lib/env.ts`），配置错误会直接报错并说明缺哪个字段，
@@ -205,7 +207,52 @@ npm run lint          # 仅 Lint
 
 ---
 
-## 8. 可选 Docker 部署
+## 8. 用手机访问（把电脑当服务器）
+
+不想每次都坐在电脑前用？可以让这台电脑直接当服务器，手机连同一个 Wi-Fi 就能打开。
+
+```bash
+npm run build     # 生产构建（改过代码才需要重做）
+npm run lan       # 监听 0.0.0.0:3100，并打印手机访问地址
+```
+
+Windows 上更省事的方式：双击项目根目录的 **`start-lan.bat`**（缺构建产物时会自动构建）。
+
+手机端已针对性优化：底部 5 个 Tab 的单手导航、输入框 16px 字号（iOS 不会缩放页面）、
+拍照直接调起相机、上传前在浏览器里自动压缩图片、支持「添加到主屏幕」全屏使用。
+
+防火墙放行（只需一次，管理员 PowerShell）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\open-firewall.ps1
+```
+
+完整步骤、常驻自启、外网访问（Tailscale）、安全清单与排错表见
+**[docs/LAN_DEPLOY.md](docs/LAN_DEPLOY.md)**。
+
+### 不在同一个 Wi-Fi 也要用（异地手机）
+
+见 **[docs/REMOTE_ACCESS.md](docs/REMOTE_ACCESS.md)**。两种可行路径：
+
+| 方案 | 说明 |
+|---|---|
+| **Tailscale**（推荐） | 电脑与手机各装客户端、登录同一账号，手机会拿到 `100.x.x.x` 地址，直接访问 `http://100.x.x.x:3100`。加密、不用改路由器、不向公网暴露端口 |
+| **IPv6 直连** | 若宽带有公网 IPv6（本机已具备），在路由器放行 TCP 3100 后，手机用 `http://[IPv6地址]:3100` 访问。无需装软件，但**明文**且前缀会变 |
+
+服务默认监听 `::`（双栈，IPv4 + IPv6 都通），这是 IPv6 直连能成立的前提。
+
+> ⚠️ 三个上线前必做：删掉演示账号或改密、把 `ALLOW_SELF_SIGNUP` 设为 `false`、
+> 确认 `COOKIE_SECURE` 不是 `true`（用 http 访问时配成 true 会导致"登录成功但刷新又回登录页"）。
+
+数据备份：
+
+```bash
+npm run backup    # 备份到 .data/backups/<时间戳>/
+```
+
+---
+
+## 9. 可选 Docker 部署
 
 Docker **不是本地开发的前提**，第一版本地启动完全不需要它。
 只有当你要把应用部署到服务器时才需要，见 [docs/DEPLOY.md](docs/DEPLOY.md)。
@@ -216,7 +263,7 @@ Docker **不是本地开发的前提**，第一版本地启动完全不需要它
 
 ---
 
-## 9. 安全说明
+## 10. 安全说明
 
 | 措施 | 实现位置 |
 |---|---|
@@ -234,7 +281,7 @@ Docker **不是本地开发的前提**，第一版本地启动完全不需要它
 
 ---
 
-## 10. 常见问题（FAQ）
+## 11. 常见问题（FAQ）
 
 **Q1. 启动时报 `[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED]` 或服务器莫名退出？**
 本机环境的文件删除守卫会拦截 Next.js 清理 `.next` 目录的操作。
@@ -281,7 +328,7 @@ npx playwright install chromium
 
 ---
 
-## 11. 当前完成度（诚实清单）
+## 12. 当前完成度（诚实清单）
 
 **已实测通过：**
 - 类型检查 0 错误、Lint 0 问题
@@ -312,7 +359,7 @@ npx playwright install chromium
 
 ---
 
-## 12. 许可与数据声明
+## 13. 许可与数据声明
 
 - 学习数据仅用于提供学习服务，默认不公开，支持导出与归档。
 - 面向未成年人设计：数据最小化、不做焦虑式提醒、不与他人比较。

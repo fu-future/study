@@ -141,7 +141,7 @@ export default async function SettingsPage() {
                 </Alert>
               ) : null}
 
-              <dl className="grid gap-3 sm:grid-cols-2">
+              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="rounded-lg border bg-card p-3">
                   <dt className="text-xs text-muted-foreground">默认模型</dt>
                   <dd className="mt-1 font-mono text-sm">{provider.defaultModel}</dd>

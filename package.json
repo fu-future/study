@@ -30,7 +30,12 @@
     "pg:schema": "node scripts/make-postgres-schema.mjs",
     "pg:migration:sql": "node scripts/make-postgres-schema.mjs && node scripts/generate-postgres-migration.mjs",
     "prepare:e2e": "node scripts/reset-e2e-distdir.mjs",
-    "pretest:e2e": "npm run prepare:e2e"
+    "pretest:e2e": "npm run prepare:e2e",
+    "lan": "node scripts/serve-lan.mjs",
+    "serve": "next start -H ::",
+    "icons": "node scripts/generate-icons.mjs",
+    "backup": "node scripts/backup-data.mjs",
+    "net:check": "node scripts/diagnose-network.mjs"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",

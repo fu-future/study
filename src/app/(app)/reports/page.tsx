@@ -183,7 +183,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
             <>
               <p className="text-2xl font-semibold">{formatPercent(report.tasks.completionRate)}</p>
               <Progress value={(report.tasks.completionRate ?? 0) * 100} label="本周任务完成率" />
-              <ul className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+              <ul className="grid grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-4">
                 <li>共 {report.tasks.total} 项</li>
                 <li>已完成 {report.tasks.completed} 项</li>
                 <li>待完成 {report.tasks.pending} 项</li>
@@ -283,7 +283,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
               这一周还没有产生任何掌握度评估。掌握度只在真实作答之后才会更新。
             </p>
           ) : (
-            <ul className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:grid-cols-6">
               {MASTERY_ORDER.map((level) => (
                 <li key={level} className="rounded-lg border bg-card p-3 text-center">
                   <p className="text-lg font-semibold">{report.mastery.distribution[level] ?? 0}</p>
@@ -350,7 +350,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         </CardContent>
       </Card>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {/* 重复错误 */}
         <Card>
           <CardHeader>

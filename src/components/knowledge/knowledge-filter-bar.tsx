@@ -38,7 +38,7 @@ export function KnowledgeFilterBar({
 
   return (
     <div className="rounded-xl border bg-card p-3 sm:p-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="学科" htmlFor="kp-subject">
           <Select
             id="kp-subject"

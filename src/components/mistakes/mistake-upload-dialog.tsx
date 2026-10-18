@@ -3,7 +3,7 @@
 import * as React from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Check, Sparkles, Upload, X } from 'lucide-react';
+import { AlertTriangle, Camera, Check, Sparkles, Upload, X } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/primitives';
 import { Markdown } from '@/components/markdown';
 import { ERROR_TYPES, errorTypeLabel } from '@/lib/domain/enums';
+import { prepareImageForUpload, type PreparedImage } from '@/lib/client-image';
 import {
   ApiError,
   apiPost,
@@ -33,7 +34,9 @@ import { cn } from '@/lib/utils';
  * 确认之后再调用创建接口 —— 「AI 猜的」和「学生确认过的」必须区分开。
  */
 
-const ACCEPTED = 'image/png,image/jpeg,image/webp';
+// 选图时放开到 image/*：iPhone 的 HEIC 也能选进来，上传前会由 prepareImageForUpload
+// 统一转成 JPEG/PNG（服务端只接受 png/jpeg/webp，且会校验字节魔数）。
+const ACCEPTED = 'image/*';
 const MAX_BYTES = 5 * 1024 * 1024;
 
 function formatBytes(bytes: number): string {
@@ -107,6 +110,10 @@ export function MistakeUploadDialog({
 
   const [file, setFile] = React.useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+  /** 压缩/转码后的待上传文件；null 表示还在处理中或尚未选择 */
+  const [prepared, setPrepared] = React.useState<PreparedImage | null>(null);
+  const [preparing, setPreparing] = React.useState(false);
+  const cameraRef = React.useRef<HTMLInputElement>(null);
   const [subjectId, setSubjectId] = React.useState(defaultSubjectId ?? subjects[0]?.id ?? '');
 
   const [uploading, setUploading] = React.useState(false);
@@ -138,6 +145,7 @@ export function MistakeUploadDialog({
 
   function reset() {
     setFile(null);
+    setPrepared(null);
     setAnalysis(null);
     setUploadId(null);
     setStem('');
@@ -150,21 +158,55 @@ export function MistakeUploadDialog({
     setSaved(false);
   }
 
+  /**
+   * 选中图片后的统一入口（相册与拍照两条路都走这里）。
+   *
+   * 立刻开始压缩，而不是等到点「开始识别」时再做：
+   * 手机上处理一张 8MB 的照片要几百毫秒到一两秒，先处理完再显示
+   * 「已压缩 8.2 MB → 480 KB」，学生就知道上传为什么这么快。
+   */
+  async function pickImage(next: File | null) {
+    setFile(next);
+    setPrepared(null);
+    setAnalysis(null);
+    setError(null);
+    setProgress(0);
+    if (!next) return;
+
+    setPreparing(true);
+    try {
+      setPrepared(await prepareImageForUpload(next));
+    } catch (err) {
+      setError(toUserMessage(err));
+    } finally {
+      setPreparing(false);
+    }
+  }
+
   async function handleAnalyze() {
     setError(null);
+    const target = prepared?.file ?? null;
     if (!file) {
       setError('请先选择一张题目截图。');
       return;
     }
-    if (file.size > MAX_BYTES) {
-      setError(`图片太大了（${formatBytes(file.size)}）。上限 5 MB，可以先用截图工具压缩一下。`);
+    if (preparing) {
+      setError('图片还在处理中，稍等一下再点识别。');
+      return;
+    }
+    if (!target) {
+      setError('这张图片没能处理好，请换一张，或在相册里先截图再上传。');
+      return;
+    }
+    if (target.size > MAX_BYTES) {
+      setError(`图片太大了（${formatBytes(target.size)}）。上限 5 MB，可以先用截图工具压缩一下。`);
       return;
     }
 
     setUploading(true);
     setProgress(0);
     try {
-      const uploaded = await uploadWithProgress(file, setProgress);
+      const uploaded = await uploadWithProgress(target, setProgress);
       setUploadId(uploaded.uploadId);
       setUploading(false);
       setAnalyzing(true);
@@ -284,21 +326,44 @@ export function MistakeUploadDialog({
             <Field
               label="题目截图"
               htmlFor="upload-file"
-              hint="尽量只截题目本身，光线均匀、字迹清晰识别会更准"
+              hint="可以拍照，也可以从相册选。只截题目本身、光线均匀时识别最准"
             >
               <Input
                 id="upload-file"
                 type="file"
                 accept={ACCEPTED}
-                disabled={uploading || analyzing || saving}
-                onChange={(event) => {
-                  const next = event.target.files?.[0] ?? null;
-                  setFile(next);
-                  setAnalysis(null);
-                  setError(null);
-                }}
+                disabled={uploading || analyzing || saving || preparing}
+                onChange={(event) => void pickImage(event.target.files?.[0] ?? null)}
               />
             </Field>
+
+            {/*
+              单独给一个「直接拍照」：accept="image/*" 在手机上会先弹选择器，
+              学生还得再点一次相机。带 capture 的输入会直接进相机，拍完就是这张图。
+              桌面端没有相机，隐藏掉。
+            */}
+            <div className="-mt-2 lg:hidden">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={uploading || analyzing || saving || preparing}
+                onClick={() => cameraRef.current?.click()}
+              >
+                <Camera aria-hidden />
+                直接拍照
+              </Button>
+              <input
+                ref={cameraRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                aria-hidden
+                tabIndex={-1}
+                onChange={(event) => void pickImage(event.target.files?.[0] ?? null)}
+              />
+            </div>
 
             {file && previewUrl ? (
               <div className="flex items-center gap-3 rounded-lg border p-3">
@@ -311,7 +376,13 @@ export function MistakeUploadDialog({
                 />
                 <div className="min-w-0 text-sm">
                   <p className="truncate font-medium">{file.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatBytes(file.size)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {preparing
+                      ? '正在处理图片…'
+                      : prepared?.compressed
+                        ? `已压缩 ${formatBytes(prepared.originalBytes)} → ${formatBytes(prepared.bytes)}`
+                        : formatBytes(file.size)}
+                  </p>
                 </div>
               </div>
             ) : null}
@@ -528,8 +599,8 @@ export function MistakeUploadDialog({
                   <Button
                     type="button"
                     onClick={() => void handleAnalyze()}
-                    loading={uploading || analyzing}
-                    disabled={!file}
+                    loading={uploading || analyzing || preparing}
+                    disabled={!file || preparing}
                   >
                     <Sparkles aria-hidden />
                     开始识别

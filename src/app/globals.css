@@ -52,6 +52,22 @@
 
   html {
     -webkit-text-size-adjust: 100%;
+    /* 手机上点击链接/按钮时浏览器默认会闪一块灰色高亮，显得很"网页"；
+       去掉之后配合底栏与抽屉，观感更接近原生 App。 */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /*
+   * 兜底规则：iOS Safari 在输入控件字号小于 16px 时，会在聚焦瞬间把整个页面放大，
+   * 学生打完字页面就错位了。组件层（Input/Textarea/Select）已经用 16px，
+   * 这条规则覆盖那些直接写的原生 input（例如多选框、文件选择器）。
+   */
+  @media (max-width: 639px) {
+    input,
+    textarea,
+    select {
+      font-size: 16px;
+    }
   }
 
   body {

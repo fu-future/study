@@ -27,7 +27,7 @@
 | 1 | TypeScript 类型检查 | `npx tsc --noEmit` | ✅ **通过** | `error TS` 计数 = **0** |
 | 2 | Lint | `npx eslint .` | ✅ **通过** | 输出为空 = **0 problem** |
 | 3 | 单元测试 | `npx vitest run` | ✅ **通过** | **4 个文件 / 139 个用例全部通过**（2.0s） |
-| 4 | 端到端测试 | `npm run test:e2e` | ✅ **通过** | **66 个用例通过**（Chromium，约 3 分钟） |
+| 4 | 端到端测试 | `npm run test:e2e` | ✅ **通过** | **71 个用例通过**（Chromium，约 4 分钟） |
 | 5 | 生产构建 | `npm run build` | ✅ **通过** | 43 个路由全部编译；共享 JS 103 kB；BUILD_ID `ieZfiG1sAMxZsriBwxLeI` |
 | 6 | 生产模式启动 | `npx next start -p 3200` | ✅ **通过** | `/api/health` → `status: ok, db: true`；`/login` 200；`/dashboard` 307 跳登录 |
 | 7 | 数据库迁移状态 | `npx prisma migrate status` | ✅ **通过** | `Database schema is up to date!` |
@@ -109,7 +109,7 @@ Test Files  4 passed (4)      Tests  139 passed (139)
 | 非法输入 | ✅ `dayCount=0`、负数可用时间、难度/系数越界 |
 | 重复调用与时间边界 | ✅ 纯函数确定性；跨月/跨年/闰日；14 天窗口端点 |
 
-### E2E 明细（7 个 spec，66 个用例）
+### E2E 明细（8 个 spec，71 个用例）
 
 | spec | 验证内容 |
 |---|---|
@@ -119,6 +119,7 @@ Test Files  4 passed (4)      Tests  139 passed (139)
 | `planner.spec.ts` | 界面生成计划；逐天校验不超可用时间；每个任务都有推荐原因；时间极少时自动精简；周计划 7 天；完成任务并持久化；**完成任务产生学习时段** |
 | `reports.spec.ts` | 空数据→空状态且页面**不出现 0%**；有数据→四指标分离；重复错误统计；证据与不确定性说明；周区间为 7 天且周一起算 |
 | `tutor.spec.ts` | Mock 流式回复；对话持久化（含刷新后回看）；四种模式可切换；空输入禁用发送；未登录 401；超长输入 400 |
+| `mobile.spec.ts` | 手机视口（390×844 + 触控）：底部 Tab 五个入口可见可点且高亮正确；**10 个页面在有真实数据时无横向溢出**；输入框字号 ≥16px；底栏不遮挡内容；manifest / 图标 / viewport-fit 配置齐全 |
 | `security.spec.ts` | **跨用户隔离**（读/写/改/复习全部 404）；对话隔离；图片未授权 401；路径穿越被拒；伪装图片的文本被拒；超大文件被拒；合法 PNG 可传且未登录不可读；错误响应不含堆栈/路径/SQL/密钥；健康接口不泄密钥；Cookie 为 httpOnly+SameSite；伪造 Cookie 被拒；演示账号密码校验 |
 
 ---

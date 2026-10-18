@@ -168,7 +168,7 @@ export default async function KnowledgeDetailPage({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-lg border bg-card p-3">
               <p className="text-xs text-muted-foreground">掌握等级</p>
               <p className="mt-1 text-sm font-medium">{masteryLabel(result.level)}</p>
@@ -379,7 +379,7 @@ export default async function KnowledgeDetailPage({
 
       {/* 常见错误 / 典型题型 */}
       {commonMistakes.length > 0 || typicalQuestionTypes.length > 0 ? (
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {commonMistakes.length > 0 ? (
             <Card>
               <CardHeader>
